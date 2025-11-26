@@ -11,15 +11,16 @@
 
 int main(int argc, char* argv[]) {
     int children = 4;
-    char *xstr = "0", *ystr = "0";
+    char *xstr = "0", *ystr = "0", *tstr = "1";
     double start_scale = 0.05; 
     int frames = 50;
 
     int opt;
-    while((opt = getopt(argc, argv, "x:y:c:s:")) != -1) {
+    while((opt = getopt(argc, argv, "x:y:t:c:s:")) != -1) {
         switch(opt) {
             case 'x': xstr = optarg; break;
             case 'y': ystr = optarg; break;
+            case 't': tstr = optarg; break;
             case 'c': children = atoi(optarg); break;
             case 's': start_scale = atof(optarg); break;
         }
@@ -41,6 +42,7 @@ int main(int argc, char* argv[]) {
                   "-x", xstr,
                   "-y", ystr,
                   "-s", sarg,
+                  "-t", tstr,
                   "-W", "1000",
                   "-H", "1000",
                   "-m", "2000",

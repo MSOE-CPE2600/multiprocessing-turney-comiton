@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
+#include <pthread.h>
 #include "jpegrw.h"
 
 // local routines
@@ -18,6 +19,35 @@ static int iterations_at_point( double x, double y, int max );
 static void compute_image( imgRawImage *img, double xmin, double xmax,
 									double ymin, double ymax, int max );
 static void show_help();
+typedef struct {
+    imgRawImage *img;
+    double xmin, xmax, ymin, ymax;
+    int max;
+    int start_row;
+    int end_row;
+} ThreadArgs;
+
+void* thread_func(void *arg) {
+    ThreadArgs *t = (ThreadArgs*)arg;
+
+    for (int j = t->start_row; j < t->end_row; j++) {
+        for (int i = 0; i < t->img->width; i++) {
+
+            double x = t->xmin + i * (t->xmax - t->xmin) / t->img->width;
+            double y = t->ymin + j * (t->ymax - t->ymin) / t->img->height;
+
+            int iters = iterations_at_point(x, y, t->max);
+            int color = iteration_to_color(iters, t->max);
+
+            setPixelRGB(t->img, i, j,
+                (color >> 16) & 0xFF,
+                (color >> 8)  & 0xFF,
+                color & 0xFF);
+        }
+    }
+
+    return NULL;
+}
 
 
 int main( int argc, char *argv[] )
@@ -34,11 +64,12 @@ int main( int argc, char *argv[] )
 	int    image_width = 1000;
 	int    image_height = 1000;
 	int    max = 1000;
+	int threads = 1;
 
 	// For each command line argument given,
 	// override the appropriate configuration value.
 
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h"))!=-1) {
+	while((c = getopt(argc,argv,"x:y:s:t:W:H:m:o:h"))!=-1) {
 		switch(c) 
 		{
 			case 'x':
@@ -49,6 +80,9 @@ int main( int argc, char *argv[] )
 				break;
 			case 's':
 				xscale = atof(optarg);
+				break;
+			case 't':
+				threads = atoi(optarg);
 				break;
 			case 'W':
 				image_width = atoi(optarg);
@@ -70,7 +104,7 @@ int main( int argc, char *argv[] )
 	}
 
 	// Calculate y scale based on x scale (settable) and image sizes in X and Y (settable)
-	yscale = xscale / image_width * image_height;
+
 
 	// Display the configuration of the image.
 	printf("mandel: x=%lf y=%lf xscale=%lf yscale=%1f max=%d outfile=%s\n",xcenter,ycenter,xscale,yscale,max,outfile);
@@ -82,7 +116,35 @@ int main( int argc, char *argv[] )
 	setImageCOLOR(img,0);
 
 	// Compute the Mandelbrot image
-	compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
+	yscale = xscale * image_height / image_width;
+	double xmin = xcenter - xscale/2;
+	double xmax = xcenter + xscale/2;
+	double ymin = ycenter - yscale/2;
+	double ymax = ycenter + yscale/2;
+	pthread_t tids[threads];
+	ThreadArgs args[threads];
+
+	int rows_per_thread = image_height / threads;
+
+	for (int t = 0; t < threads; t++) {
+		args[t].img = img;
+		args[t].xmin = xmin;
+		args[t].xmax = xmax;
+		args[t].ymin = ymin;
+		args[t].ymax = ymax;
+		args[t].max = max;
+
+		args[t].start_row = t * rows_per_thread;
+		args[t].end_row = (t == threads - 1) ?
+							image_height :
+							(t + 1) * rows_per_thread;
+
+		pthread_create(&tids[t], NULL, thread_func, &args[t]);
+}
+
+for (int t = 0; t < threads; t++) {
+    pthread_join(tids[t], NULL);
+}
 
 	// Save the image in the stated file.
 	storeJpegImageFile(img,outfile);
